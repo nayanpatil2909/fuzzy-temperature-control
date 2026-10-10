@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fuzzy Smart Temperature Control — FOAI PBL Project</title>
+  <meta name="description" content="Mamdani Fuzzy Logic-Based Adaptive Temperature Control System. FOAI academic project demonstrating fuzzification, inference, aggregation, and centroid defuzzification." />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<div class="dashboard">
+
+  <!-- ══════════════════════ HEADER ══════════════════════ -->
+  <header class="header">
+    <div class="header-left">
+      <div class="header-icon">🌡️</div>
+      <div class="header-title">
+        <h1>Fuzzy Smart Temperature Control</h1>
+        <p>Mamdani Fuzzy Logic · Adaptive Cooling Controller · FOAI PBL Project</p>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="status-badge" id="statusBadge">
+        <span class="status-dot"></span>
+        <span id="statusText">SYSTEM READY</span>
+      </div>
+      <div class="status-badge" style="background:transparent; border-color:var(--border);">
+        <span class="mono" id="clockDisplay" style="color:var(--text-secondary); font-size:11px;"></span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ══════════════════════ SCENARIO PRESETS ══════════════════════ -->
+  <div class="scenarios-bar section-gap">
+    <span class="scenarios-label">📋 Quick Scenarios:</span>
+    <button class="preset-btn" onclick="applyScenario('hot')">🔥 Hot Room</button>
+    <button class="preset-btn" onclick="applyScenario('comfortable')">😊 Comfortable</button>
+    <button class="preset-btn" onclick="applyScenario('cold')">❄️ Cold Room</button>
+    <button class="preset-btn" onclick="applyScenario('disturbance')">⚡ Heat Disturbance</button>
+    <button class="preset-btn" onclick="applyScenario('humid')">💧 High Humidity</button>
+  </div>
+
+  <!-- ══════════════════════ ROW 1: MAIN PANELS ══════════════════════ -->
+  <div class="main-grid section-gap">
+
+    <!-- ── Control Panel ── -->
+    <div class="card control-panel" id="controlPanel">
+      <div class="card-header">
+        <span class="card-title">⚙ Input Parameters</span>
+        <span class="card-icon">🎛️</span>
+      </div>
+
+      <div class="control-group">
+        <label class="control-label">
+          Target Temperature
+          <span class="control-value mono" id="targetVal">24.0 °C</span>
+        </label>
+        <input type="range" id="targetTemp" min="16" max="36" step="0.5" value="24" />
+        <div class="slider-ticks"><span>16°C</span><span>26°C</span><span>36°C</span></div>
+      </div>
+
+      <div class="control-group">
+        <label class="control-label">
+          Current Temperature
+          <span class="control-value mono" id="currentVal">32.0 °C</span>
+        </label>
+        <input type="range" id="currentTemp" min="10" max="45" step="0.5" value="32" />
+        <div class="slider-ticks"><span>10°C</span><span>27.5°C</span><span>45°C</span></div>
+      </div>
+
+      <div class="control-group">
+        <label class="control-label">
+          Humidity
+          <span class="control-value mono" id="humidityVal">70 %</span>
+        </label>
+        <input type="range" id="humidity" min="0" max="100" step="1" value="70" />
+        <div class="slider-ticks"><span>0% (Dry)</span><span>50%</span><span>100% (Humid)</span></div>
+      </div>
+
+      <div style="padding:12px; background:rgba(0,212,255,0.05); border:1px solid var(--border); border-radius:8px; margin-top:4px;">
+        <div style="font-size:11px; color:var(--text-secondary); margin-bottom:6px; font-weight:600; text-transform:uppercase; letter-spacing:0.05em;">Derived Values</div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+          <div>
+            <span style="font-size:10px; color:var(--text-muted);">Error e = T_t − T_c</span><br>
+            <span class="mono" id="errorDisplay" style="color:var(--cyan); font-size:15px; font-weight:700;">—</span>
+          </div>
+          <div>
+            <span style="font-size:10px; color:var(--text-muted);">Rate Δe = e(t)−e(t-1)</span><br>
+            <span class="mono" id="deltaDisplay" style="color:var(--purple); font-size:15px; font-weight:700;">—</span>
+          </div>
+        </div>
+      </div>
+
+      <button class="btn-predict" id="predictBtn" onclick="runPredict()">
+        ⚡ Run Fuzzy Inference
+      </button>
+
+      <div style="margin-top:8px; font-size:10px; color:var(--text-muted); text-align:center;">
+        Mamdani FLC · 25-Rule Base · Centroid Defuzzification
+      </div>
+    </div>
+
+    <!-- ── Fuzzy Analysis Panel ── -->
+    <div class="card fuzzy-panel" id="fuzzyPanel">
+      <div class="card-header">
+        <span class="card-title">🧠 Fuzzy Analysis</span>
+        <span class="card-icon" style="font-size:12px; color:var(--text-muted);">AND=min · AGG=max</span>
+      </div>
+
+      <!-- Error memberships -->
+      <div>
+        <div class="mf-section-title">Temperature Error  e = T_target − T_current</div>
+        <div class="membership-bars" id="errorBars">
+          <div class="membership-row">
+            <span class="membership-label">NB</span>
+            <div class="bar-track"><div class="bar-fill" id="e-NB" style="background:var(--cl-vh)"></div></div>
+            <span class="membership-val" id="ev-NB">—</span>
+          </div>
+          <div class="membership-row">
+            <span class="membership-label">NS</span>
+            <div class="bar-track"><div class="bar-fill" id="e-NS" style="background:var(--cl-h)"></div></div>
+            <span class="membership-val" id="ev-NS">—</span>
+          </div>
+          <div class="membership-row">
+            <span class="membership-label">ZE</span>
+            <div class="bar-track"><div class="bar-fill" id="e-ZE" style="background:var(--cl-m)"></div></div>
+            <span class="membership-val" id="ev-ZE">—</span>
+          </div>
+          <div class="membership-row">
+            <span class="membership-label">PS</span>
+            <div class="bar-track"><div class="bar-fill" id="e-PS" style="background:var(--cl-l)"></div></div>
+            <span class="membership-val" id="ev-PS">—</span>
+          </div>
+          <div class="membership-row">
+            <span class="membership-label">PB</span>
+            <div class="bar-track"><div class="bar-fill" id="e-PB" style="background:var(--cl-vl)"></div></div>
+            <span class="membership-val" id="ev-PB">—</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Delta Error memberships -->
+      <div>
+        <div class="mf-section-title">Rate of Change Δe = e(t) − e(t−1)</div>
+        <div class="membership-bars">
+          <div class="membership-row">
+            <span class="membership-label">NB</span>
+            <div class="bar-track"><div class="bar-fill" id="de-NB" style="background:var(--cl-vh)"></div></div>
+            <span class="membership-val" id="dev-NB">—</span>
+          </div>
+          <div class="membership-row">
+            <span class="membership-label">NS</span>
+            <div class="bar-track"><div class="bar-fill" id="de-NS" style="background:var(--cl-h)"></div></div>
+            <span class="membership-val" id="dev-NS">—</span>
+          </div>
+          <div class="membership-row">
+            <span class="membership-label">ZE</span>
+            <div class="bar-track"><div class="bar-fill" id="de-ZE" style="background:var(--cl-m)"></div></div>
+            <span class="membership-val" id="dev-ZE">—</span>
+          </div>
+          <div class="membership-row">
+            <span class="membership-label">PS</span>
+            <div class="bar-track"><div class="bar-fill" id="de-PS" style="background:var(--cl-l)"></div></div>
+            <span class="membership-val" id="dev-PS">—</span>
+          </div>
+          <div class="membership-row">
+            <span class="membership-label">PB</span>
+            <div class="bar-track"><div class="bar-fill" id="de-PB" style="background:var(--cl-vl)"></div></div>
+            <span class="membership-val" id="dev-PB">—</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Humidity memberships -->
+      <div>
+        <div class="mf-section-title">
+          Humidity Modifier
+          <span class="mono" id="humidModDisplay" style="color:var(--yellow); float:right;">—</span>
+        </div>
+        <div class="membership-bars">
+          <div class="membership-row">
+            <span class="membership-label" style="color:var(--cl-vl);">Low</span>
+            <div class="bar-track"><div class="bar-fill" id="h-Low" style="background:var(--cl-vl)"></div></div>
+            <span class="membership-val" id="hv-Low">—</span>
+          </div>
+          <div class="membership-row">
+            <span class="membership-label" style="color:var(--cl-m);">Med</span>
+            <div class="bar-track"><div class="bar-fill" id="h-Medium" style="background:var(--cl-m)"></div></div>
+            <span class="membership-val" id="hv-Medium">—</span>
+          </div>
+          <div class="membership-row">
+            <span class="membership-label" style="color:var(--cl-vh);">High</span>
+            <div class="bar-track"><div class="bar-fill" id="h-High" style="background:var(--cl-vh)"></div></div>
+            <span class="membership-val" id="hv-High">—</span>
+          </div>
+        </div>
+        <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:4px; margin-top:8px; text-align:center;">
+          <div style="font-size:10px; color:var(--text-muted);">Low → ×0.85</div>
+          <div style="font-size:10px; color:var(--text-muted);">Med → ×1.00</div>
+          <div style="font-size:10px; color:var(--text-muted);">High → ×1.15</div>
+        </div>
+      </div>
+
+      <!-- Activated rules -->
+      <div>
+        <div class="mf-section-title" id="rulesCountLabel">Activated Rules</div>
+        <div class="rules-list" id="rulesList">
+          <div style="font-size:11px; color:var(--text-muted); text-align:center; padding:16px;">
+            Run inference to see activated rules
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Output / Gauge Panel ── -->
+    <div class="card output-panel">
+      <div class="card-header" style="width:100%;">
+        <span class="card-title">📊 Cooling Output</span>
+        <span class="card-icon">❄️</span>
+      </div>
+
+      <canvas id="gaugeCanvas" width="260" height="160"></canvas>
+
+      <div class="cooling-level-badge" id="coolingBadge">—</div>
+
+      <div class="system-meta" style="width:100%;">
+        <div class="meta-item">
+          <span class="meta-label">Raw Output</span>
+          <span class="meta-value mono" id="rawOutput">—</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">After Modifier</span>
+          <span class="meta-value mono" id="finalOutput">—</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Hum. Modifier</span>
+          <span class="meta-value mono" id="humModMeta">—</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Rules Fired</span>
+          <span class="meta-value mono" id="rulesFired">—</span>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /main-grid -->
+
+  <!-- ══════════════════════ ROW 2: CURVE + EXPLANATION ══════════════════════ -->
+  <div class="curve-row section-gap">
+
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">📈 Aggregated Output MF + Centroid</span>
+        <span style="font-size:10px; color:var(--text-muted);">u* = Σ(u·μ) / Σ(μ)  over [0, 100]</span>
+      </div>
+      <canvas id="aggregatedChart" style="max-height:230px;"></canvas>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">💬 AI Decision Explanation</span>
+        <span class="card-icon">🎓</span>
+      </div>
+      <div id="explanationBox" style="overflow-y:auto; max-height:440px; padding:2px;">
+        <div style="text-align:center; padding:40px 20px; color:var(--text-muted); font-size:12px; line-height:2;">
+          ⚡ Click <strong style="color:var(--cyan);">Run Fuzzy Inference</strong> to see the full<br>step-by-step Mamdani FLC pipeline with real values.
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ══════════════════════ ROW 3: SIMULATION ══════════════════════ -->
+  <div class="card section-gap" id="simPanel">
+    <div class="card-header">
+      <span class="card-title">▶ Dynamic Simulation</span>
+      <span style="font-size:10px; color:var(--text-muted);">Simplified 1st-order thermal model — NOT a real HVAC model</span>
+    </div>
+
+    <div class="sim-controls">
+      <div class="sim-field">
+        <label>Initial Temp (°C)</label>
+        <input type="number" id="simInitTemp" value="34" min="15" max="45" step="0.5" style="width:90px;" />
+      </div>
+      <div class="sim-field">
+        <label>Target Temp (°C)</label>
+        <input type="number" id="simTargetTemp" value="24" min="15" max="35" step="0.5" style="width:90px;" />
+      </div>
+      <div class="sim-field">
+        <label>Humidity (%)</label>
+        <input type="number" id="simHumidity" value="65" min="0" max="100" step="1" style="width:80px;" />
+      </div>
+      <div class="sim-field">
+        <label>Disturbance Step</label>
+        <input type="number" id="simDistStep" value="50" min="5" max="95" step="1" style="width:80px;" />
+      </div>
+      <div class="sim-field">
+        <label>Disturbance (°C)</label>
+        <input type="number" id="simDistMag" value="5" min="0" max="12" step="0.5" style="width:80px;" />
+      </div>
+      <div class="sim-field">
+        <label>Noise Filter</label>
+        <select id="simFilter">
+          <option value="none">None</option>
+          <option value="moving_avg">Moving Avg</option>
+          <option value="ema">EMA</option>
+        </select>
+      </div>
+      <label class="toggle-label" style="align-self:flex-end; margin-bottom:4px;">
+        <input type="checkbox" id="simNoise" /> Add Sensor Noise
+      </label>
+      <button class="btn btn-primary" id="simBtn" onclick="runSimulation()">▶ Run Simulation</button>
+    </div>
+
+    <div class="sim-charts">
+      <div>
+        <div class="mf-section-title" style="margin-bottom:10px;">Temperature Response</div>
+        <canvas id="simTempChart" style="max-height:220px;"></canvas>
+      </div>
+      <div>
+        <div class="mf-section-title" style="margin-bottom:10px;">Cooling Power</div>
+        <canvas id="simCoolingChart" style="max-height:220px;"></canvas>
+      </div>
+    </div>
+
+    <div style="margin-top:12px; padding:10px 14px; background:rgba(245,158,11,0.07); border:1px solid rgba(245,158,11,0.2); border-radius:8px; font-size:11px; color:var(--text-secondary);">
+      📌 Thermal model: T(t+1) = T(t) + α·(T_ambient − T(t)) − β·(P/100)  where α=0.025, β=0.80.
+      A one-shot heat disturbance of the specified magnitude is injected at the selected step.
+    </div>
+  </div>
+
+  <!-- ══════════════════════ ROW 4: COMPARISON ══════════════════════ -->
+  <div class="card section-gap">
+    <div class="card-header">
+      <span class="card-title">⚖ Controller Comparison: Fuzzy vs Threshold</span>
+      <button class="btn btn-secondary" id="compareBtn" onclick="runComparison()" style="padding:6px 14px;">▶ Run Comparison</button>
+    </div>
+
+    <div class="comparison-grid">
+      <div>
+        <div class="mf-section-title" style="margin-bottom:10px;">Temperature Response</div>
+        <canvas id="compTempChart" style="max-height:220px;"></canvas>
+      </div>
+      <div>
+        <div class="mf-section-title" style="margin-bottom:10px;">Cooling Power</div>
+        <canvas id="compCoolingChart" style="max-height:220px;"></canvas>
+      </div>
+    </div>
+
+    <div style="margin-top:16px;">
+      <div class="mf-section-title" style="margin-bottom:10px;">Performance Metrics</div>
+      <div style="overflow-x:auto;">
+        <table class="metrics-table" id="metricsTable">
+          <thead>
+            <tr>
+              <th>Metric</th>
+              <th class="cyan">Fuzzy Controller</th>
+              <th class="purple">Threshold Controller</th>
+            </tr>
+          </thead>
+          <tbody id="metricsBody">
+            <tr><td colspan="3" style="text-align:center; color:var(--text-muted); padding:20px;">Run the comparison to see results</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div style="margin-top:10px; font-size:11px; color:var(--text-muted);">
+        ⚠ Results are from a <em>simplified software simulation</em>. They illustrate controller behaviour, not real-world HVAC performance.
+      </div>
+
+      <!-- Experiment Results — populated by JS after comparison runs -->
+      <div id="experimentResultsBox" style="display:none;">
+        <div class="exp-results">
+          <div class="exp-results-title">📊 Experiment Results Summary <span style="font-weight:400; color:var(--text-secondary); font-size:11px;">(generated from live simulation data)</span></div>
+          <div class="exp-summary-grid" id="expSummaryGrid"></div>
+          <div class="exp-verdict" id="expVerdict"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════ WHY FUZZY LOGIC? ══════════════════════ -->
+  <div class="card section-gap">
+    <div class="card-header">
+      <span class="card-title">🤔 Why Fuzzy Logic?</span>
+      <span class="card-icon">💡</span>
+    </div>
+    <div class="why-fuzzy-grid">
+      <div class="why-col" style="background:rgba(239,68,68,0.05); border-color:rgba(239,68,68,0.2);">
+        <div class="why-col-title" style="color:var(--red);">❌ Threshold Controller (ON/OFF)</div>
+        <ul>
+          <li>▸ Binary decision: fully ON or fully OFF</li>
+          <li>▸ Fixed static threshold (e.g. &gt;26°C → 100% cooling)</li>
+          <li>▸ No awareness of rate of temperature change</li>
+          <li>▸ Abrupt power switching → compressor wear</li>
+          <li>▸ Overshoots setpoint → uncomfortable oscillation</li>
+          <li>▸ Cannot handle overlapping linguistic conditions</li>
+        </ul>
+      </div>
+      <div class="why-col" style="background:rgba(0,212,255,0.04); border-color:rgba(0,212,255,0.2);">
+        <div class="why-col-title" style="color:var(--cyan);">✅ Mamdani Fuzzy Logic Controller</div>
+        <ul>
+          <li>▸ Gradual, proportional output (0–100%)</li>
+          <li>▸ Handles linguistic terms: "slightly hot", "very hot"</li>
+          <li>▸ Combines error AND rate of change (Δe)</li>
+          <li>▸ Overlapping MFs produce smooth control transitions</li>
+          <li>▸ Humidity modifier adapts to perceived comfort</li>
+          <li>▸ Interpretable: every decision traceable to a rule</li>
+        </ul>
+      </div>
+      <div class="why-quote">
+        <strong style="color:var(--green);">Key Insight for Viva:</strong> A threshold controller asks <em>"Is the room hot?"</em> (yes/no). A fuzzy logic controller asks <em>"How hot is the room, and how quickly is it getting hotter?"</em> — producing a nuanced, proportional response that mimics expert human judgment rather than a simple switch.
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════ ROW 5: EDUCATIONAL PANEL ══════════════════════ -->
+  <div class="card section-gap">
+    <div class="card-header">
+      <span class="card-title">📚 Educational Reference</span>
+      <span class="card-icon">🎓</span>
+    </div>
+
+    <div class="edu-tabs">
+      <button class="edu-tab active" onclick="showEduTab('pipeline', this)">Pipeline</button>
+      <button class="edu-tab" onclick="showEduTab('concepts', this)">Concepts</button>
+      <button class="edu-tab" onclick="showEduTab('mf-charts', this)">Membership Functions</button>
+      <button class="edu-tab" onclick="showEduTab('rule-matrix', this)">Rule Matrix</button>
+      <button class="edu-tab" onclick="showEduTab('iot', this)">Future Scope</button>
+    </div>
+
+    <!-- Pipeline tab -->
+    <div class="edu-panel active" id="tab-pipeline">
+      <p style="font-size:13px; color:var(--text-secondary); margin-bottom:16px;">
+        The Mamdani Fuzzy Inference pipeline processes each input through six sequential steps to produce the crisp cooling output.
+      </p>
+      <div class="pipeline">
+        <div class="pipeline-step">
+          <div class="pipeline-box">Crisp Inputs</div>
+          <div class="pipeline-desc">e, Δe, Humidity</div>
+        </div>
+        <div class="pipeline-arrow">→</div>
+        <div class="pipeline-step">
+          <div class="pipeline-box">Fuzzification</div>
+          <div class="pipeline-desc">MF evaluation → degrees</div>
+        </div>
+        <div class="pipeline-arrow">→</div>
+        <div class="pipeline-step">
+          <div class="pipeline-box">Rule Evaluation</div>
+          <div class="pipeline-desc">AND = min(μ₁, μ₂)</div>
+        </div>
+        <div class="pipeline-arrow">→</div>
+        <div class="pipeline-step">
+          <div class="pipeline-box">Implication</div>
+          <div class="pipeline-desc">Clip output MF at strength</div>
+        </div>
+        <div class="pipeline-arrow">→</div>
+        <div class="pipeline-step">
+          <div class="pipeline-box">Aggregation</div>
+          <div class="pipeline-desc">Max of all clipped MFs</div>
+        </div>
+        <div class="pipeline-arrow">→</div>
+        <div class="pipeline-step">
+          <div class="pipeline-box">Defuzzification</div>
+          <div class="pipeline-desc">Centroid / CoG</div>
+        </div>
+        <div class="pipeline-arrow">→</div>
+        <div class="pipeline-step">
+          <div class="pipeline-box" style="background:rgba(16,185,129,0.1); border-color:rgba(16,185,129,0.4); color:var(--green);">Cooling %</div>
+          <div class="pipeline-desc">Crisp output 0–100%</div>
+        </div>
+      </div>
+
+      <div style="margin-top:20px; display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:12px;">
+        <div style="padding:14px; background:rgba(0,212,255,0.05); border:1px solid var(--border); border-radius:8px;">
+          <div style="font-size:12px; font-weight:600; color:var(--cyan); margin-bottom:6px;">Sign Convention</div>
+          <div class="mono" style="font-size:11px; color:var(--text-secondary); line-height:1.8;">
+            e = T_target − T_current<br>
+            e &lt; 0  →  room too HOT  →  more cooling<br>
+            e &gt; 0  →  room too COLD →  less cooling<br>
+            e ≈ 0  →  at setpoint   →  maintain
+          </div>
+        </div>
+        <div style="padding:14px; background:rgba(139,92,246,0.05); border:1px solid var(--border); border-radius:8px;">
+          <div style="font-size:12px; font-weight:600; color:#c4b5fd; margin-bottom:6px;">Centroid Formula</div>
+          <div class="mono" style="font-size:11px; color:var(--text-secondary); line-height:1.8;">
+            u* = Σ(uᵢ · μ_agg(uᵢ)) / Σ(μ_agg(uᵢ))<br>
+            where uᵢ ∈ [0, 100]  (201 discrete points)<br>
+            μ_agg = max of all clipped output MFs
+          </div>
+        </div>
+        <div style="padding:14px; background:rgba(245,158,11,0.05); border:1px solid var(--border); border-radius:8px;">
+          <div style="font-size:12px; font-weight:600; color:var(--yellow); margin-bottom:6px;">Humidity Modifier</div>
+          <div class="mono" style="font-size:11px; color:var(--text-secondary); line-height:1.8;">
+            m = Σ(μ_label × factor_label) / Σ(μ_label)<br>
+            Low = 0.85 · Medium = 1.00 · High = 1.15<br>
+            Final = clip(raw × m, 0, 100)
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Concepts tab -->
+    <div class="edu-panel" id="tab-concepts">
+      <div class="concepts-grid">
+        <div class="concept-card">
+          <div class="concept-term">Fuzzy Set</div>
+          <div class="concept-def">A set where elements have a degree of membership between 0 and 1, rather than a crisp yes/no. Allows gradual transitions between categories (e.g., "slightly hot").</div>
+        </div>
+        <div class="concept-card">
+          <div class="concept-term">Membership Function (MF)</div>
+          <div class="concept-def">A mathematical function that maps a crisp input to a membership degree [0,1]. This project uses triangular (trimf) and trapezoidal (trapmf) MFs.</div>
+        </div>
+        <div class="concept-card">
+          <div class="concept-term">Fuzzification</div>
+          <div class="concept-def">The process of converting a crisp numeric input (e.g., error = −8°C) into fuzzy membership degrees for each linguistic set (NB=0.65, NS=0.35, ...).</div>
+        </div>
+        <div class="concept-card">
+          <div class="concept-term">Rule Base</div>
+          <div class="concept-def">A set of IF–THEN rules that encode expert knowledge. Here: 25 rules for 5 error × 5 rate-of-error combinations. E.g., "IF e=NB AND Δe=ZE THEN Cooling=VH".</div>
+        </div>
+        <div class="concept-card">
+          <div class="concept-term">Mamdani Inference</div>
+          <div class="concept-def">A fuzzy inference method where AND is computed as min(μ₁, μ₂) and the rule implication clips the output MF at the firing strength. Output is a fuzzy set.</div>
+        </div>
+        <div class="concept-card">
+          <div class="concept-term">Aggregation</div>
+          <div class="concept-def">Combining all activated rule outputs into a single fuzzy set using the maximum operator: μ_agg(u) = max over all active rules of the clipped output MF.</div>
+        </div>
+        <div class="concept-card">
+          <div class="concept-term">Defuzzification</div>
+          <div class="concept-def">Converting the aggregated fuzzy output back to a single crisp number. This project uses the Centroid method (Center of Gravity).</div>
+        </div>
+        <div class="concept-card">
+          <div class="concept-term">Centroid Method</div>
+          <div class="concept-def">u* = Σ(u·μ(u)) / Σ(μ(u)) — the "center of mass" of the aggregated fuzzy output curve. Produces a smooth, proportional crisp output.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MF Charts tab -->
+    <div class="edu-panel" id="tab-mf-charts">
+      <p style="font-size:12px; color:var(--text-secondary); margin-bottom:16px;">
+        All membership functions drawn over their respective universes of discourse.
+        Vertical dashed lines show the current input values (after running inference).
+      </p>
+      <div class="mf-charts-grid">
+        <div class="card" style="padding:14px;">
+          <div class="mf-section-title" style="margin-bottom:10px;">Temperature Error  e  ∈ [−15, +15] °C</div>
+          <canvas id="mfErrorChart" style="max-height:180px;"></canvas>
+        </div>
+        <div class="card" style="padding:14px;">
+          <div class="mf-section-title" style="margin-bottom:10px;">Rate of Change  Δe  ∈ [−5, +5] °C/step</div>
+          <canvas id="mfDeltaChart" style="max-height:180px;"></canvas>
+        </div>
+        <div class="card" style="padding:14px;">
+          <div class="mf-section-title" style="margin-bottom:10px;">Humidity  H  ∈ [0, 100] %</div>
+          <canvas id="mfHumidChart" style="max-height:180px;"></canvas>
+        </div>
+        <div class="card" style="padding:14px;">
+          <div class="mf-section-title" style="margin-bottom:10px;">Cooling Output  u  ∈ [0, 100] %</div>
+          <canvas id="mfCoolingChart" style="max-height:180px;"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Rule Matrix tab -->
+    <div class="edu-panel" id="tab-rule-matrix">
+      <p style="font-size:12px; color:var(--text-secondary); margin-bottom:16px;">
+        The 5×5 Mamdani rule matrix. Highlighted cells show the rules that fired in the last inference.
+        Colour indicates the consequent cooling level.
+      </p>
+
+      <div style="margin-bottom:10px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+        <span style="font-size:11px; color:var(--text-secondary);">Consequent:</span>
+        <span class="rule-cell VL" style="padding:3px 8px; border-radius:4px;">VL</span>
+        <span class="rule-cell L"  style="padding:3px 8px; border-radius:4px;">L</span>
+        <span class="rule-cell M"  style="padding:3px 8px; border-radius:4px;">M</span>
+        <span class="rule-cell H"  style="padding:3px 8px; border-radius:4px;">H</span>
+        <span class="rule-cell VH" style="padding:3px 8px; border-radius:4px;">VH</span>
+        <span style="font-size:11px; color:var(--cyan); margin-left:8px;">■ Active rule</span>
+      </div>
+
+      <div class="rule-matrix-container">
+        <div class="rule-matrix-grid" id="ruleMatrixGrid">
+          <!-- Rendered by JS -->
+        </div>
+      </div>
+
+      <div style="margin-top:16px; font-size:11px; color:var(--text-muted);">
+        Rows = Temperature Error (e) · Columns = Rate of Change of Error (Δe) · 25 total rules
+      </div>
+    </div>
+
+    <!-- Future Scope tab -->
+    <div class="edu-panel" id="tab-iot">
+      <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:16px;">
+        <div style="padding:16px; background:rgba(16,185,129,0.06); border:1px solid rgba(16,185,129,0.2); border-radius:10px;">
+          <div style="font-size:13px; font-weight:700; color:var(--green); margin-bottom:10px;">✅ Current Scope (This Project)</div>
+          <ul style="font-size:12px; color:var(--text-secondary); line-height:1.9; list-style:none; padding:0;">
+            <li>▸ Software-only fuzzy inference engine</li>
+            <li>▸ Mamdani FLC with 25-rule base</li>
+            <li>▸ Centroid defuzzification</li>
+            <li>▸ Humidity modifier (0.85 / 1.00 / 1.15)</li>
+            <li>▸ Simplified 1st-order thermal simulation</li>
+            <li>▸ Fuzzy vs threshold comparison</li>
+            <li>▸ Interactive educational dashboard</li>
+          </ul>
+        </div>
+        <div style="padding:16px; background:rgba(0,212,255,0.05); border:1px solid rgba(0,212,255,0.15); border-radius:10px;">
+          <div style="font-size:13px; font-weight:700; color:var(--cyan); margin-bottom:10px;">🔭 Future Hardware Integration</div>
+          <ul style="font-size:12px; color:var(--text-secondary); line-height:1.9; list-style:none; padding:0;">
+            <li>▸ DHT22 temperature + humidity sensor</li>
+            <li>▸ ESP32 microcontroller for IoT bridge</li>
+            <li>▸ PWM-controlled HVAC fan actuator</li>
+            <li>▸ MQTT protocol for real-time telemetry</li>
+            <li>▸ This backend receives live sensor readings</li>
+            <li>▸ Closed-loop physical control</li>
+          </ul>
+        </div>
+        <div style="padding:16px; background:rgba(139,92,246,0.05); border:1px solid rgba(139,92,246,0.2); border-radius:10px;">
+          <div style="font-size:13px; font-weight:700; color:#c4b5fd; margin-bottom:10px;">🚀 Algorithmic Enhancements</div>
+          <ul style="font-size:12px; color:var(--text-secondary); line-height:1.9; list-style:none; padding:0;">
+            <li>▸ Self-tuning fuzzy MF parameters</li>
+            <li>▸ Adaptive rule base via ANFIS</li>
+            <li>▸ Multi-zone temperature management</li>
+            <li>▸ Energy consumption optimisation</li>
+            <li>▸ Occupancy-aware setpoint scheduling</li>
+            <li>▸ CO₂ and air-quality secondary inputs</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /edu card -->
+
+</div><!-- /dashboard -->
+
+<!-- Toast notification -->
+<div class="toast" id="toast"></div>
+
+<!-- Chart.js + annotation plugin -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+<script src="script.js"></script>
+
+</body>
+</html>
